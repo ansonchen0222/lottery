@@ -605,6 +605,7 @@
                 <div class="panel-label" style="margin-bottom:0">History</div>
                 <div class="history-actions">
                     <button class="btn btn-ghost" style="font-size:0.65rem;padding:6px 12px;" onclick="openEditor('history')">Edit</button>
+                    <button class="btn btn-ghost" style="font-size:0.65rem;padding:6px 12px;" onclick="exportState()">Export</button>
                 </div>
             </div>
             <ul class="history-list" id="historyList"></ul>
@@ -1002,6 +1003,27 @@
             updateStats();
             renderHistory();
             closeEditor();
+        }
+
+        function exportState() {
+            const listCode = 'const DEFAULT_LIST = [\n' +
+                participants.map(p => `            { name: '${p.name}', dept: '${p.dept}' },`).join('\n') +
+                '\n        ];';
+            const drawnCode = 'const DEFAULT_DRAWN = [\n' +
+                drawn.map(d => `            { name: '${d.name}', dept: '${d.dept}', time: '${d.time || ''}' },`).join('\n') +
+                '\n        ];';
+            const output = listCode + '\n\n        ' + drawnCode;
+
+            navigator.clipboard.writeText(output).then(() => {
+                alert('已複製到剪貼板！\n\n用這段代碼替換 index.html 裡的 DEFAULT_LIST 和 DEFAULT_DRAWN，然後 git push 即可同步給所有人。');
+            }).catch(() => {
+                // fallback: show in editor
+                editorMode = 'export';
+                document.getElementById('editorTitle').textContent = 'EXPORT STATE';
+                document.getElementById('editorHint').textContent = '複製以下內容，替換 index.html 裡的 DEFAULT_LIST 和 DEFAULT_DRAWN 區塊，然後 git push。';
+                document.getElementById('editorText').value = output;
+                document.getElementById('editorOverlay').classList.add('active');
+            });
         }
 
         document.getElementById('deptSelect').addEventListener('change', updateStats);
