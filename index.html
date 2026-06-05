@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>內部分享會抽獎</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+TC:wght@300;400;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+        :root {
+            --cyan: #00ffff;
+            --cyan-dim: #00ffff44;
+            --magenta: #ff00ff;
+            --gold: #ffcc00;
+            --canvas: #010102;
+            --surface-1: #0f1011;
+            --surface-2: #141516;
+            --surface-3: #1a1b1c;
+            --ink: #f7f8f8;
+            --ink-muted: #8a8f98;
+            --hairline: #23252a;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--canvas);
+            color: var(--ink);
+            font-family: 'Noto Sans TC', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ===== Matrix Rain Background (canvas-based, toggleable) ===== */
+        #matrixCanvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 0;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        body.fancy-on #matrixCanvas {
+            opacity: 1;
+        }
+
+        /* Scanline effect */
+        .scanline {
+            display: none;
+        }
+
+        body.fancy-on .scanline {
+            display: block;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(0,255,255,0.6), transparent);
+            opacity: 0.3;
+            animation: scanDown 6s linear infinite;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        @keyframes scanDown {
+            0% { top: -2px; }
+            100% { top: 100vh; }
+        }
+
+        /* ===== Layout ===== */
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 880px;
+            margin: 0 auto;
+            padding: 48px 24px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-family: 'Orbitron', monospace;
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--cyan);
+            letter-spacing: 3px;
+            margin-bottom: 8px;
+        }
+
+        body.fancy-on .header h1 {
+            text-shadow: 0 0 20px rgba(0,255,255,0.3);
+        }
+
+        .header .subtitle {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--ink-muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* Settings toggle */
+        .settings-bar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 16px;
+            gap: 12px;
+        }
+
+        .toggle-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toggle-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--ink-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .toggle {
+            width: 36px;
+            height: 20px;
+            background: var(--surface-3);
+            border-radius: 10px;
+            position: relative;
+            cursor: pointer;
+            border: 1px solid var(--hairline);
+            transition: all 0.3s;
+        }
+
+        .toggle.active {
+            background: var(--cyan-dim);
+            border-color: var(--cyan);
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px; left: 2px;
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: var(--ink-muted);
+            transition: all 0.3s;
+        }
+
+        .toggle.active::after {
+            left: 18px;
+            background: var(--cyan);
+            box-shadow: 0 0 6px var(--cyan);
+        }
+
+        /* Panel */
+        .panel {
+            background: var(--surface-1);
+            border: 1px solid var(--hairline);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        body.fancy-on .panel {
+            box-shadow: 0 0 20px rgba(0,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.02);
+        }
+
+        body.fancy-on .panel:hover {
+            border-color: var(--cyan-dim);
+        }
+
+        .panel-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--ink-muted);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-bottom: 16px;
+        }
+
+        /* Stats */
+        .stats {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            margin-bottom: 28px;
+        }
+
+        .stat { text-align: center; }
+
+        .stat-value {
+            font-family: 'Orbitron', monospace;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--cyan);
+        }
+
+        body.fancy-on .stat-value {
+            text-shadow: 0 0 10px rgba(0,255,255,0.4);
+        }
+
+        .stat-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--ink-muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 0.8rem;
+            color: var(--ink-muted);
+        }
+
+        select, input[type="number"] {
+            background: var(--surface-2);
+            border: 1px solid var(--hairline);
+            color: var(--ink);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        select:focus, input[type="number"]:focus {
+            border-color: var(--cyan);
+            box-shadow: 0 0 0 2px rgba(0,255,255,0.1);
+        }
+
+        input[type="number"] { width: 56px; text-align: center; }
+
+        /* Buttons */
+        .btn {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.75rem;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--cyan);
+            color: var(--canvas);
+            font-weight: 700;
+        }
+
+        body.fancy-on .btn-primary { box-shadow: 0 0 20px rgba(0,255,255,0.3); }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(0,255,255,0.4);
+        }
+
+        .btn-primary:disabled {
+            background: var(--surface-3);
+            color: var(--ink-muted);
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--hairline);
+            color: var(--ink-muted);
+        }
+
+        .btn-ghost:hover {
+            border-color: var(--ink-muted);
+            color: var(--ink);
+        }
+
+        .btn-undo {
+            background: transparent;
+            border: 1px solid #ffaa00;
+            color: #ffaa00;
+        }
+
+        .btn-undo:hover {
+            background: rgba(255,170,0,0.1);
+        }
+
+        .btn-undo:disabled {
+            border-color: var(--hairline);
+            color: var(--ink-muted);
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: transparent;
+            border: 1px solid #ff4444;
+            color: #ff4444;
+        }
+
+        .btn-danger:hover { background: rgba(255,68,68,0.1); }
+
+        /* Slot Machine */
+        .slot-area {
+            text-align: center;
+            padding: 40px 20px;
+            min-height: 140px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slot-name {
+            font-family: 'Orbitron', monospace;
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--ink);
+            transition: all 0.05s;
+        }
+
+        .slot-name.rolling { color: var(--cyan); }
+
+        .slot-name.winner {
+            color: var(--gold);
+            animation: winnerReveal 0.6s ease-out;
+        }
+
+        body.fancy-on .slot-name.winner {
+            text-shadow: 0 0 30px rgba(255,204,0,0.5), 0 0 60px rgba(255,204,0,0.2);
+            animation: winnerReveal 0.6s ease-out, winnerGlow 1.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes winnerReveal {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes winnerGlow {
+            0% { text-shadow: 0 0 20px rgba(255,204,0,0.4); }
+            100% { text-shadow: 0 0 40px rgba(255,204,0,0.7), 0 0 80px rgba(255,204,0,0.3); }
+        }
+
+        .slot-dept {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--ink-muted);
+            margin-top: 8px;
+            letter-spacing: 1px;
+        }
+
+        /* Particle burst */
+        .particles {
+            position: absolute;
+            top: 50%; left: 50%;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px; height: 4px;
+            border-radius: 50%;
+            animation: particleBurst 1s ease-out forwards;
+        }
+
+        @keyframes particleBurst {
+            0% { transform: translate(0,0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+        }
+
+        /* History */
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .history-list {
+            list-style: none;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            padding: 10px 14px;
+            margin-bottom: 4px;
+            background: var(--surface-2);
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid var(--cyan);
+            animation: itemSlide 0.3s ease-out;
+        }
+
+        @keyframes itemSlide {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .history-item .h-name {
+            color: var(--ink);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .history-item .h-dept {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--ink-muted);
+            font-size: 0.7rem;
+            margin-left: 12px;
+        }
+
+        .history-item .h-time {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--ink-muted);
+            font-size: 0.65rem;
+        }
+
+        .history-item .h-remove {
+            color: #ff4444;
+            cursor: pointer;
+            font-size: 0.8rem;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+            margin-left: 8px;
+        }
+
+        .history-item .h-remove:hover { opacity: 1; }
+
+        .empty-state {
+            text-align: center;
+            color: var(--ink-muted);
+            padding: 30px;
+            font-size: 0.85rem;
+        }
+
+        /* Modal */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .overlay.active { display: flex; }
+
+        .modal {
+            background: var(--surface-1);
+            border: 1px solid var(--hairline);
+            border-radius: 12px;
+            padding: 28px;
+            width: 90%;
+            max-width: 580px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h2 {
+            font-family: 'Orbitron', monospace;
+            font-size: 1rem;
+            color: var(--cyan);
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .modal p {
+            color: var(--ink-muted);
+            font-size: 0.8rem;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        textarea {
+            width: 100%;
+            height: 280px;
+            background: var(--surface-2);
+            border: 1px solid var(--hairline);
+            color: var(--ink);
+            padding: 14px;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.7;
+            resize: vertical;
+            outline: none;
+        }
+
+        textarea:focus {
+            border-color: var(--cyan);
+            box-shadow: 0 0 0 2px rgba(0,255,255,0.1);
+        }
+
+        .modal-actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .btn-save {
+            background: #00cc88;
+            color: #000;
+            font-weight: 700;
+        }
+
+        .btn-save:hover { background: #00dd99; }
+    </style>
+</head>
+<body class="fancy-on">
+    <canvas id="matrixCanvas"></canvas>
+    <div class="scanline"></div>
+
+    <div class="container">
+        <div class="header">
+            <h1>INTERNAL LOTTERY</h1>
+            <div class="subtitle">// 內部分享會抽獎系統</div>
+        </div>
+
+        <div class="settings-bar">
+            <div class="toggle-wrapper">
+                <span class="toggle-label">Animations</span>
+                <div class="toggle active" id="fancyToggle" onclick="toggleFancy()"></div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value" id="totalCount">0</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="remainCount">0</div>
+                <div class="stat-label">Remaining</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="drawnCount">0</div>
+                <div class="stat-label">Drawn</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-label">Control</div>
+            <div class="controls">
+                <div class="control-group">
+                    <label>部門</label>
+                    <select id="deptSelect"></select>
+                </div>
+                <div class="control-group">
+                    <label>人數</label>
+                    <input type="number" id="drawCount" value="1" min="1" max="10">
+                </div>
+                <button class="btn btn-primary" id="drawBtn" onclick="startDraw()">DRAW</button>
+                <button class="btn btn-undo" id="undoBtn" onclick="undoLast()" disabled>UNDO</button>
+                <button class="btn btn-ghost" onclick="openEditor('participants')">Edit List</button>
+                <button class="btn btn-danger" onclick="resetDrawn()">Reset</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-label">Result</div>
+            <div class="slot-area" id="slotArea">
+                <div class="slot-name" id="slotName">READY</div>
+                <div class="slot-dept" id="slotDept"></div>
+                <div class="particles" id="particles"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="history-header">
+                <div class="panel-label" style="margin-bottom:0">History</div>
+                <div class="history-actions">
+                    <button class="btn btn-ghost" style="font-size:0.65rem;padding:6px 12px;" onclick="openEditor('history')">Edit</button>
+                </div>
+            </div>
+            <ul class="history-list" id="historyList"></ul>
+            <div class="empty-state" id="emptyState">No draws yet.</div>
+        </div>
+    </div>
+
+    <div class="overlay" id="editorOverlay">
+        <div class="modal">
+            <h2 id="editorTitle">EDIT</h2>
+            <p id="editorHint"></p>
+            <textarea id="editorText"></textarea>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeEditor()">Cancel</button>
+                <button class="btn btn-save" onclick="saveEditor()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== Matrix Rain =====
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+        let matrixRunning = false;
+        let matrixRAF = null;
+
+        const matrixChars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+        let columns = [];
+        let drops = [];
+
+        function initMatrix() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            const fontSize = 14;
+            columns = Math.floor(canvas.width / fontSize);
+            drops = Array(columns).fill(1).map(() => Math.floor(Math.random() * -50));
+        }
+
+        function drawMatrix() {
+            if (!matrixRunning) return;
+            ctx.fillStyle = 'rgba(1, 1, 2, 0.06)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const fontSize = 14;
+            ctx.font = `${fontSize}px 'JetBrains Mono', monospace`;
+
+            for (let i = 0; i < columns; i++) {
+                const char = matrixChars[Math.floor(Math.random() * matrixChars.length)];
+                const x = i * fontSize;
+                const y = drops[i] * fontSize;
+
+                const alpha = 0.15 + Math.random() * 0.15;
+                ctx.fillStyle = `rgba(0, 255, 180, ${alpha})`;
+                ctx.fillText(char, x, y);
+
+                if (y > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+            matrixRAF = requestAnimationFrame(drawMatrix);
+        }
+
+        function startMatrix() {
+            if (matrixRunning) return;
+            matrixRunning = true;
+            initMatrix();
+            drawMatrix();
+        }
+
+        function stopMatrix() {
+            matrixRunning = false;
+            if (matrixRAF) cancelAnimationFrame(matrixRAF);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        window.addEventListener('resize', () => { if (matrixRunning) initMatrix(); });
+
+        // ===== App Data =====
+        const DEFAULT_LIST = [
+            { name: 'Jennifer Jiang', dept: '戰略' },
+            { name: 'Nicole Gan', dept: '戰略' },
+            { name: 'Leo', dept: 'BI管理' },
+            { name: 'LianJie', dept: 'BI管理' },
+            { name: 'Maggie', dept: 'BI管理' },
+            { name: 'Chung', dept: 'BI管理' },
+            { name: 'Richard', dept: 'BI管理' },
+            { name: 'Shawn Hu', dept: 'BI管理' },
+            { name: 'Anson Chen', dept: '數據產品' },
+            { name: 'Yan Kai', dept: '數據產品' },
+            { name: 'Kai Yi Ooi', dept: '數據產品' },
+            { name: 'Benjamin Tao', dept: '數據產品' },
+            { name: 'Zac Yeaw', dept: '數據治理' },
+            { name: 'Chloe', dept: '數據治理' },
+            { name: 'Simon Huang', dept: '經營分析' },
+            { name: 'Xin Heng', dept: '經營分析' },
+            { name: 'Pierson', dept: '經營分析' },
+            { name: 'Kimberly', dept: '經營分析' },
+            { name: 'Kevin Liu', dept: '經營分析' },
+            { name: 'Kah Weng', dept: '經營分析' },
+        ];
+
+        const DEFAULT_DRAWN = [
+            { name: 'Jennifer Jiang', dept: '戰略', time: '2025/6/6 10:58:52' },
+            { name: 'Nicole Gan', dept: '戰略', time: '2025/6/6 10:58:53' },
+            { name: 'Leo', dept: 'BI管理', time: '2025/6/20 11:21:37' },
+            { name: 'LianJie', dept: 'BI管理', time: '2025/6/20 11:21:37' },
+            { name: 'Maggie', dept: 'BI管理', time: '2025/9/19 11:36:40' },
+            { name: 'Chung', dept: 'BI管理', time: '2025/10/31 10:50:47' },
+            { name: 'Richard', dept: 'BI管理', time: '2025/12/19 10:53:57' },
+            { name: 'Shawn Hu', dept: 'BI管理', time: '' },
+            { name: 'Anson Chen', dept: '數據產品', time: '2025/6/6 10:53:09' },
+            { name: 'Yan Kai', dept: '數據產品', time: '2025/7/18 11:23:22' },
+            { name: 'Kai Yi Ooi', dept: '數據產品', time: '2025/10/17 10:50:04' },
+            { name: 'Benjamin Tao', dept: '數據產品', time: '2026/2/27 10:38:55' },
+            { name: 'Zac Yeaw', dept: '數據治理', time: '2026/1/2 10:53:58' },
+            { name: 'Chloe', dept: '數據治理', time: '2026/4/17 10:50:08' },
+            { name: 'Simon Huang', dept: '經營分析', time: '2025/6/6 10:53:09' },
+            { name: 'Xin Heng', dept: '經營分析', time: '2025/8/29 10:44:43' },
+            { name: 'Pierson', dept: '經營分析', time: '2025/8/29 10:45:01' },
+            { name: 'Kimberly', dept: '經營分析', time: '2025/11/21 10:50:45' },
+            { name: 'Kevin Liu', dept: '經營分析', time: '2026/1/30 11:00:07' },
+            { name: 'Kah Weng', dept: '經營分析', time: '2026/5/19 10:16:22' },
+        ];
+
+        let participants = JSON.parse(localStorage.getItem('lottery_participants')) || DEFAULT_LIST;
+        let drawn = JSON.parse(localStorage.getItem('lottery_drawn')) || DEFAULT_DRAWN;
+        let undoStack = [];
+        let isDrawing = false;
+        let editorMode = 'participants';
+
+        function init() {
+            updateDeptSelect();
+            updateStats();
+            renderHistory();
+            updateUndoBtn();
+            const fancy = localStorage.getItem('lottery_fancy') !== 'off';
+            setFancy(fancy);
+        }
+
+        function toggleFancy() {
+            const isOn = document.body.classList.contains('fancy-on');
+            setFancy(!isOn);
+        }
+
+        function setFancy(on) {
+            document.body.classList.toggle('fancy-on', on);
+            document.getElementById('fancyToggle').classList.toggle('active', on);
+            localStorage.setItem('lottery_fancy', on ? 'on' : 'off');
+            if (on) startMatrix();
+            else stopMatrix();
+        }
+
+        function updateDeptSelect() {
+            const select = document.getElementById('deptSelect');
+            const depts = [...new Set(participants.map(p => p.dept))];
+            select.innerHTML = '<option value="all">全部</option>';
+            depts.forEach(d => { select.innerHTML += `<option value="${d}">${d}</option>`; });
+        }
+
+        function updateStats() {
+            const dept = document.getElementById('deptSelect').value;
+            const pool = getPool(dept);
+            const total = participants.filter(p => dept === 'all' || p.dept === dept).length;
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('remainCount').textContent = pool.length;
+            document.getElementById('drawnCount').textContent = drawn.length;
+        }
+
+        function getPool(dept) {
+            const drawnNames = new Set(drawn.map(d => d.name));
+            return participants.filter(p => {
+                if (dept !== 'all' && p.dept !== dept) return false;
+                return !drawnNames.has(p.name);
+            });
+        }
+
+        function updateUndoBtn() {
+            document.getElementById('undoBtn').disabled = undoStack.length === 0;
+        }
+
+        function startDraw() {
+            if (isDrawing) return;
+            const dept = document.getElementById('deptSelect').value;
+            const count = parseInt(document.getElementById('drawCount').value) || 1;
+            const pool = getPool(dept);
+
+            if (pool.length === 0) {
+                document.getElementById('slotName').textContent = 'NO ONE LEFT';
+                document.getElementById('slotName').className = 'slot-name';
+                document.getElementById('slotDept').textContent = '';
+                return;
+            }
+
+            const actualCount = Math.min(count, pool.length);
+            isDrawing = true;
+            document.getElementById('drawBtn').disabled = true;
+
+            const slotName = document.getElementById('slotName');
+            const slotDept = document.getElementById('slotDept');
+            slotName.className = 'slot-name rolling';
+            slotDept.textContent = '';
+
+            let tick = 0;
+            const totalTicks = 35;
+
+            const interval = setInterval(() => {
+                const r = pool[Math.floor(Math.random() * pool.length)];
+                slotName.textContent = r.name;
+                slotDept.textContent = r.dept;
+                tick++;
+
+                if (tick >= totalTicks) {
+                    clearInterval(interval);
+
+                    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+                    const winners = shuffled.slice(0, actualCount);
+
+                    slotName.textContent = winners.map(w => w.name).join('  /  ');
+                    slotDept.textContent = winners.map(w => w.dept).join('  /  ');
+                    slotName.className = 'slot-name winner';
+
+                    if (document.body.classList.contains('fancy-on')) {
+                        spawnParticles();
+                    }
+
+                    const now = new Date();
+                    const ts = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+
+                    // Save to undo stack before adding
+                    undoStack.push(winners.length);
+
+                    winners.forEach(w => { drawn.push({ ...w, time: ts }); });
+
+                    localStorage.setItem('lottery_drawn', JSON.stringify(drawn));
+                    updateStats();
+                    renderHistory();
+                    updateUndoBtn();
+                    isDrawing = false;
+                    document.getElementById('drawBtn').disabled = false;
+                }
+            }, 50 + tick * 2);
+        }
+
+        function undoLast() {
+            if (undoStack.length === 0) return;
+            const count = undoStack.pop();
+            drawn.splice(drawn.length - count, count);
+            localStorage.setItem('lottery_drawn', JSON.stringify(drawn));
+            document.getElementById('slotName').textContent = 'READY';
+            document.getElementById('slotName').className = 'slot-name';
+            document.getElementById('slotDept').textContent = '';
+            updateStats();
+            renderHistory();
+            updateUndoBtn();
+        }
+
+        function spawnParticles() {
+            const container = document.getElementById('particles');
+            container.innerHTML = '';
+            const colors = ['#00ffff', '#ff00ff', '#ffcc00', '#00ff88', '#ff6600'];
+            for (let i = 0; i < 30; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                const angle = (Math.PI * 2 / 30) * i + Math.random() * 0.5;
+                const dist = 60 + Math.random() * 100;
+                p.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+                p.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+                p.style.background = colors[Math.floor(Math.random() * colors.length)];
+                p.style.width = (3 + Math.random() * 4) + 'px';
+                p.style.height = p.style.width;
+                container.appendChild(p);
+            }
+            setTimeout(() => { container.innerHTML = ''; }, 1200);
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            const empty = document.getElementById('emptyState');
+            if (drawn.length === 0) {
+                list.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            list.innerHTML = [...drawn].reverse().map((d, i) => `
+                <li class="history-item">
+                    <div>
+                        <span class="h-name">${d.name}</span>
+                        <span class="h-dept">${d.dept}</span>
+                    </div>
+                    <div>
+                        <span class="h-time">${d.time}</span>
+                        <span class="h-remove" onclick="removeDrawn(${drawn.length - 1 - i})">&#x2715;</span>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        function removeDrawn(index) {
+            drawn.splice(index, 1);
+            localStorage.setItem('lottery_drawn', JSON.stringify(drawn));
+            updateStats();
+            renderHistory();
+        }
+
+        function resetDrawn() {
+            if (!confirm('確定要清空所有抽獎紀錄嗎？')) return;
+            drawn = [];
+            undoStack = [];
+            localStorage.setItem('lottery_drawn', JSON.stringify(drawn));
+            document.getElementById('slotName').textContent = 'READY';
+            document.getElementById('slotName').className = 'slot-name';
+            document.getElementById('slotDept').textContent = '';
+            updateStats();
+            renderHistory();
+            updateUndoBtn();
+        }
+
+        function openEditor(mode) {
+            editorMode = mode;
+            const title = document.getElementById('editorTitle');
+            const hint = document.getElementById('editorHint');
+            const textarea = document.getElementById('editorText');
+
+            if (mode === 'participants') {
+                title.textContent = 'EDIT PARTICIPANTS';
+                hint.textContent = '每行一人，格式：姓名, 部門。例如：Anson Chen, 數據產品';
+                textarea.value = participants.map(p => `${p.name}, ${p.dept}`).join('\n');
+            } else {
+                title.textContent = 'EDIT HISTORY';
+                hint.textContent = '每行一筆紀錄，格式：姓名, 部門, 時間。刪除行 = 移除該紀錄。';
+                textarea.value = drawn.map(d => `${d.name}, ${d.dept}, ${d.time}`).join('\n');
+            }
+            document.getElementById('editorOverlay').classList.add('active');
+        }
+
+        function closeEditor() {
+            document.getElementById('editorOverlay').classList.remove('active');
+        }
+
+        function saveEditor() {
+            const text = document.getElementById('editorText').value;
+            const lines = text.split('\n').filter(l => l.trim());
+
+            if (editorMode === 'participants') {
+                const newList = [];
+                lines.forEach(line => {
+                    const parts = line.split(',').map(s => s.trim());
+                    if (parts.length >= 2) newList.push({ name: parts[0], dept: parts[1] });
+                    else if (parts[0]) newList.push({ name: parts[0], dept: '未分組' });
+                });
+                if (newList.length === 0) { alert('名單不能為空！'); return; }
+                participants = newList;
+                localStorage.setItem('lottery_participants', JSON.stringify(participants));
+                updateDeptSelect();
+            } else {
+                const newDrawn = [];
+                lines.forEach(line => {
+                    const parts = line.split(',').map(s => s.trim());
+                    if (parts.length >= 2) {
+                        newDrawn.push({ name: parts[0], dept: parts[1], time: parts[2] || '' });
+                    }
+                });
+                drawn = newDrawn;
+                localStorage.setItem('lottery_drawn', JSON.stringify(drawn));
+            }
+
+            updateStats();
+            renderHistory();
+            closeEditor();
+        }
+
+        document.getElementById('deptSelect').addEventListener('change', updateStats);
+        init();
+    </script>
+</body>
+</html>
