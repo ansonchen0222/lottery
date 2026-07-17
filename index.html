@@ -392,6 +392,37 @@
             100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
         }
 
+        /* Pool */
+        .pool-count {
+            color: var(--cyan);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .pool-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .pool-chip {
+            background: var(--surface-2);
+            border: 1px solid var(--hairline);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            color: var(--ink);
+            animation: itemSlide 0.3s ease-out;
+        }
+
+        .pool-chip .p-dept {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--ink-muted);
+            margin-left: 6px;
+        }
+
         /* History */
         .history-header {
             display: flex;
@@ -602,6 +633,14 @@
 
         <div class="panel">
             <div class="history-header">
+                <div class="panel-label" style="margin-bottom:0">Pool <span class="pool-count" id="poolCount"></span></div>
+            </div>
+            <div class="pool-grid" id="poolGrid"></div>
+            <div class="empty-state" id="poolEmpty" style="display:none">No one left in this pool.</div>
+        </div>
+
+        <div class="panel">
+            <div class="history-header">
                 <div class="panel-label" style="margin-bottom:0">History</div>
                 <div class="history-actions">
                     <button class="btn btn-ghost" style="font-size:0.65rem;padding:6px 12px;" onclick="openEditor('history')">Edit</button>
@@ -799,6 +838,17 @@
             document.getElementById('totalCount').textContent = total;
             document.getElementById('remainCount').textContent = pool.length;
             document.getElementById('drawnCount').textContent = drawn.length;
+            renderPool(pool);
+        }
+
+        function renderPool(pool) {
+            const grid = document.getElementById('poolGrid');
+            const empty = document.getElementById('poolEmpty');
+            document.getElementById('poolCount').textContent = `(${pool.length})`;
+            empty.style.display = pool.length === 0 ? 'block' : 'none';
+            grid.innerHTML = pool.map(p => `
+                <span class="pool-chip">${p.name}<span class="p-dept">${p.dept}</span></span>
+            `).join('');
         }
 
         function getPool(dept) {
